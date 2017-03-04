@@ -27,4 +27,4 @@ This will create the binary dns-overlay and set the CAP_SYS_ADMIN capability on 
 
 ## Why?
 
-I needed to test some stuff I was doing in VMs with DNS and didn't changes to affect other processes.
+I needed to test some stuff I was doing in VMs with DNS and didn't want changes to affect other processes.
