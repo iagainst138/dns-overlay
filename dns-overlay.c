@@ -1,5 +1,7 @@
 #define _GNU_SOURCE
 
+#include <errno.h>
+#include <error.h>
 #include <getopt.h>
 #include <sched.h>
 #include <stdio.h>
@@ -98,7 +100,7 @@ int main(int argc, char *argv[]) {
     }
 
     if(access(NEW_RESOLV_CONF, R_OK) != 0) {
-        fprintf(stderr, "error: cannot read file '%s'\n", NEW_RESOLV_CONF);
+        fprintf(stderr, "error: cannot read file '%s': %d\n", NEW_RESOLV_CONF, errno);
         exit(1);
     }
 
@@ -106,46 +108,32 @@ int main(int argc, char *argv[]) {
     cap_t caps = cap_get_proc();
     cap_value_t capflag = CAP_SYS_ADMIN;
     r = cap_set_flag(caps, CAP_EFFECTIVE, 1, &capflag, CAP_SET);
-    if(r != 0) {
-        fprintf(stderr, " unable to cap_set_flag: %d\n", r);
-        exit(r);
-    }
+    if(r != 0)
+        error(r, errno, "unable to cap_set_flag");
 
     r = cap_set_proc(caps);
-    if(r != 0) {
-        fprintf(stderr, " unable to cap_set_proc: %d (does this executable have CAP_SYS_ADMIN set?)\n", r);
-        exit(r);
-    }
+    if(r != 0)
+        error(r, errno, "unable to cap_set_proc (does this executable have CAP_SYS_ADMIN set?)");
 
     /*
     This is needed to make the NEW_RESOLV_CONF "filesystem" private.
     */
-    if((r = mount(NEW_RESOLV_CONF, NEW_RESOLV_CONF, "\0", MS_MGC_VAL|MS_BIND, "\0")) != 0) {
-        fprintf (stderr, "failed to bind mount (1): %d\n", r);
-        exit(1);
-    }
+    if((r = mount(NEW_RESOLV_CONF, NEW_RESOLV_CONF, "\0", MS_MGC_VAL|MS_BIND, "\0")) != 0)
+        error(r, errno, "failed initial bind mount");
 
     int pid = fork();
     if(pid == 0) {
-        if((r = mount("none", NEW_RESOLV_CONF, "\0", MS_PRIVATE, "\0")) != 0) {
-            fprintf (stderr, "failed to bind mount (private): %d\n", r);
-            exit(1);
-        }
+        if((r = mount("none", NEW_RESOLV_CONF, "\0", MS_PRIVATE, "\0")) != 0)
+            error(r, errno, "failed to bind mount (private)");
 
-        if((r = unshare(CLONE_NEWNS)) != 0) {
-            fprintf (stderr, "failed to unshare: %d\n", r);
-            exit(1);
-        }
+        if((r = unshare(CLONE_NEWNS)) != 0)
+            error(r, errno, "failed to unshare");
 
-        if((r = mount("none", "/", "\0", MS_REC|MS_PRIVATE, "\0")) != 0) {
-            fprintf (stderr, "failed to mount / after unshare: %d\n", r);
-            exit(1);
-        }
+        if((r = mount("none", "/", "\0", MS_REC|MS_PRIVATE, "\0")) != 0)
+            error(r, errno, "failed to mount / after unshare");
 
-        if((r = mount(NEW_RESOLV_CONF, RESOLV_CONF, "\0", MS_BIND, "\0")) != 0) {
-            fprintf (stderr, "failed to bind mount (2): %d\n", r);
-            exit(1);
-        }
+        if((r = mount(NEW_RESOLV_CONF, RESOLV_CONF, "\0", MS_BIND, "\0")) != 0)
+            error(r, errno, "failed to mount new resolv.conf");
 
         pid = fork();
         if(pid == 0) {
